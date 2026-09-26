@@ -310,41 +310,13 @@ export function EditorPage({
   return (
     <div className="flex h-screen flex-col" onKeyDown={handleKeyDown}>
       {/* Title bar drag region + toolbar */}
-      <div className="flex shrink-0 items-center justify-between border-b px-4 [-webkit-app-region:drag]"
+      <div className="relative flex shrink-0 items-center justify-end border-b px-4 [-webkit-app-region:drag]"
         style={{ height: 52 }}
       >
-        <div className="flex min-w-0 items-center gap-2.5 pl-16">
-          <span className="truncate text-sm font-medium">{fileName}</span>
-          <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
-            {saveStatus === "saving" && (
-              <>
-                <Loader2 className="h-3 w-3 animate-spin" />
-                Saving
-              </>
-            )}
-            {saveStatus === "saved" && (
-              <>
-                <Check className="h-3 w-3" />
-                Saved
-              </>
-            )}
-            {saveStatus === "unsaved" && (
-              <span className="flex items-center gap-1">
-                <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-                Unsaved
-              </span>
-            )}
-            {saveStatus === "error" && (
-              <span
-                className="flex items-center gap-1 text-destructive [-webkit-app-region:no-drag]"
-                title={saveError}
-              >
-                <AlertCircle className="h-3 w-3" />
-                Save failed
-              </span>
-            )}
-          </span>
-        </div>
+        {/* Centered on the window, clear of the traffic lights and toolbar. */}
+        <span className="pointer-events-none absolute left-1/2 max-w-[calc(100%-26rem)] -translate-x-1/2 truncate text-sm font-medium">
+          {fileName}
+        </span>
         <div className="flex items-center gap-1 [-webkit-app-region:no-drag]">
           <Button
             variant="ghost"
@@ -413,6 +385,41 @@ export function EditorPage({
           </div>
         )}
       </div>
+
+      <footer className="flex h-6 shrink-0 items-center justify-between gap-4 border-t px-3 text-xs text-muted-foreground">
+        <span className="min-w-0 truncate" title={filePath}>
+          {filePath}
+        </span>
+        <span className="flex shrink-0 items-center gap-1">
+          {saveStatus === "saving" && (
+            <>
+              <Loader2 className="h-3 w-3 animate-spin" />
+              Saving
+            </>
+          )}
+          {saveStatus === "saved" && (
+            <>
+              <Check className="h-3 w-3" />
+              Saved
+            </>
+          )}
+          {saveStatus === "unsaved" && (
+            <span className="flex items-center gap-1">
+              <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+              Unsaved
+            </span>
+          )}
+          {saveStatus === "error" && (
+            <span
+              className="flex items-center gap-1 text-destructive"
+              title={saveError}
+            >
+              <AlertCircle className="h-3 w-3" />
+              Save failed
+            </span>
+          )}
+        </span>
+      </footer>
 
       {settingsOpen && (
         <SettingsDialog
