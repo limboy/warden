@@ -26,6 +26,7 @@ import {
   searchKeymap,
 } from "@codemirror/search";
 import { tags as t } from "@lezer/highlight";
+import { createSearchPanel } from "@/components/search-panel";
 
 export interface MarkdownEditorHandle {
   focus: () => void;
@@ -88,24 +89,10 @@ const theme = EditorView.theme({
   ".cm-panel.cm-search": {
     padding: "8px 12px",
     fontFamily: "inherit",
-    fontSize: "12px",
+    fontSize: "13px",
   },
-  ".cm-textfield": {
-    border: "1px solid var(--input)",
-    borderRadius: "6px",
-    padding: "3px 6px",
-    backgroundColor: "transparent",
-    color: "inherit",
-  },
-  ".cm-button": {
-    backgroundImage: "none",
-    backgroundColor: "var(--secondary)",
-    color: "var(--secondary-foreground)",
-    border: "1px solid var(--border)",
-    borderRadius: "6px",
-    padding: "3px 8px",
-  },
-  ".cm-panel.cm-search [name=close]": { color: "var(--muted-foreground)" },
+  // Undo the base theme's margins; the panel lays itself out with flex gaps.
+  ".cm-panel.cm-search input, .cm-panel.cm-search button": { margin: "0" },
 });
 
 const highlight = HighlightStyle.define([
@@ -161,7 +148,7 @@ export function MarkdownEditor({
           EditorState.allowMultipleSelections.of(true),
           indentOnInput(),
           highlightSelectionMatches(),
-          search({ top: true }),
+          search({ top: true, createPanel: createSearchPanel }),
           keymap.of([
             ...defaultKeymap,
             ...historyKeymap,
