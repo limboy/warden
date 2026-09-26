@@ -14,8 +14,10 @@ The pipeline: `npm version` bumps `package.json`, commits (message is the bare
 version, e.g. `0.2.0`) and creates tag `vX.Y.Z`. Pushing the tag runs
 `.github/workflows/release.yml`, which tests, signs with the Developer ID
 certificate, notarizes via the App Store Connect API key, builds arm64 + x64
-DMGs and creates the GitHub Release. The workflow fails if the tag doesn't
-match `package.json`.
+DMGs and zips and creates the GitHub Release. Installed copies auto-update
+from that release via `latest-mac.yml` (electron-updater), so a broken
+release reaches existing users within hours — the verification step matters.
+The workflow fails if the tag doesn't match `package.json`.
 
 ## 1. Preflight
 
@@ -77,8 +79,11 @@ the new commit — ask the user first, since this rewrites a published tag:
 gh release view vX.Y.Z --json url,assets -q '.url, (.assets[].name)'
 ```
 
-Expect `Warden-X.Y.Z-arm64.dmg` and `Warden-X.Y.Z-x64.dmg`. Then download
-the arm64 DMG and confirm Gatekeeper accepts the app inside it:
+Expect `Warden-X.Y.Z-arm64.dmg`, `Warden-X.Y.Z-x64.dmg`,
+`Warden-X.Y.Z-{arm64,x64}-mac.zip` (+ `.blockmap`) and `latest-mac.yml`, whose
+`version` must be X.Y.Z (`gh release download vX.Y.Z -p latest-mac.yml -O -`).
+Without the yml and zips, installed copies can't update. Then download the
+arm64 DMG and confirm Gatekeeper accepts the app inside it:
 
 ```bash
 tmp=$(mktemp -d)

@@ -21,6 +21,7 @@ Applications. Releases are signed and notarized by Apple.
 - Auto-lock when idle (configurable), on screen lock and on sleep
 - Change password
 - Optional Touch ID unlock per vault (macOS)
+- Automatic updates from GitHub Releases (macOS)
 - Automatic encrypted backups with in-app restore
 - Open vaults from Finder/Explorer or by dropping them onto the window
 
@@ -103,7 +104,10 @@ the keychain. For a local unsigned build, set `CSC_IDENTITY_AUTO_DISCOVERY=false
 ### Releases
 
 Pushing a `v*` tag runs `.github/workflows/release.yml`, which builds DMGs for
-Apple Silicon (`arm64`) and Intel (`x64`) and attaches them to a GitHub Release.
+Apple Silicon (`arm64`) and Intel (`x64`) and attaches them to a GitHub Release,
+along with the zips and `latest-mac.yml` that installed copies use to update
+themselves (`electron/updater.cjs`: checks at launch and every 6 hours, or via
+Warden → Check for Updates…).
 The tag must match the `version` in `package.json`:
 
 ```bash

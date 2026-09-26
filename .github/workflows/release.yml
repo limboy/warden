@@ -90,23 +90,30 @@ jobs:
           unset APPLE_API_KEY_P8
           # Signs with the Developer ID found in the keychain, or ad-hoc if none.
           npm run build
-          npx electron-builder --mac dmg --arm64 --x64 --publish never
+          npx electron-builder --mac dmg zip --arm64 --x64 --publish never
 
       # LZMA-compressed DMGs are ~30% smaller than electron-builder's default
       # (zlib), and its config doesn't offer this format. Needs macOS 10.15+,
-      # below Electron's own minimum.
+      # below Electron's own minimum. The updater only uses the zips, but keep
+      # the DMG checksums in latest-mac.yml accurate anyway.
       - name: Recompress DMGs
         run: |
           for dmg in release/*.dmg; do
             hdiutil convert -quiet "$dmg" -format ULMO -o "${dmg%.dmg}.ulmo.dmg"
             mv "${dmg%.dmg}.ulmo.dmg" "$dmg"
           done
-          ls -la release/*.dmg
+          rm -f release/*.dmg.blockmap
+          node scripts/update-feed-checksums.cjs release/latest-mac.yml
+          ls -la release/*.dmg release/*.zip
 
       - uses: actions/upload-artifact@v4
         with:
           name: warden-mac
-          path: release/*.dmg
+          path: |
+            release/*.dmg
+            release/*.zip
+            release/*.zip.blockmap
+            release/latest-mac.yml
           if-no-files-found: error
 
       - name: Publish GitHub Release
@@ -129,7 +136,10 @@ jobs:
              Or run: `xattr -dr com.apple.quarantine /Applications/Warden.app`
           NOTES
           fi
-          gh release create "$GITHUB_REF_NAME" release/*.dmg \
+          # latest-mac.yml and the zips are what installed copies check for
+          # updates (electron-updater); the DMGs are for new installs.
+          gh release create "$GITHUB_REF_NAME" \
+            release/*.dmg release/*.zip release/*.zip.blockmap release/latest-mac.yml \
             --title "Warden ${GITHUB_REF_NAME}" \
             --notes-file "$notes" \
             --generate-notes

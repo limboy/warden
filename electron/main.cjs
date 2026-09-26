@@ -15,6 +15,7 @@ const path = require("path");
 const fs = require("fs");
 const crypto = require("crypto");
 const { fileURLToPath } = require("url");
+const updater = require("./updater.cjs");
 
 const isDev = !app.isPackaged;
 const DEV_URL = "http://localhost:5173";
@@ -547,9 +548,29 @@ function buildMenu() {
     ],
   };
 
+  const appMenu = {
+    role: "appMenu",
+    submenu: [
+      { role: "about" },
+      {
+        label: updater.menuLabel(),
+        enabled: updater.menuEnabled(),
+        click: () => updater.checkForUpdates(true),
+      },
+      { type: "separator" },
+      { role: "services" },
+      { type: "separator" },
+      { role: "hide" },
+      { role: "hideOthers" },
+      { role: "unhide" },
+      { type: "separator" },
+      { role: "quit" },
+    ],
+  };
+
   Menu.setApplicationMenu(
     Menu.buildFromTemplate([
-      ...(isMac ? [{ role: "appMenu" }] : []),
+      ...(isMac ? [appMenu] : []),
       fileMenu,
       { role: "editMenu" },
       { role: "viewMenu" },
@@ -611,6 +632,7 @@ if (!app.requestSingleInstanceLock()) {
 
     buildMenu();
     createWindow();
+    updater.initUpdater(buildMenu);
   });
 }
 

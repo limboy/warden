@@ -31,10 +31,12 @@
     "mac": {
       "target": [
         "dmg",
+        "zip",
         "dir"
       ],
       "icon": "build/icon.icns",
-      "category": "public.app-category.productivity"
+      "category": "public.app-category.productivity",
+      "artifactName": "${productName}-${version}-${arch}-mac.${ext}"
     },
     "dmg": {
       "artifactName": "${productName}-${version}-${arch}.${ext}"
@@ -53,7 +55,12 @@
         "role": "Editor",
         "rank": "Owner"
       }
-    ]
+    ],
+    "publish": {
+      "provider": "github",
+      "owner": "limboy",
+      "repo": "warden"
+    }
   },
   "devDependencies": {
     "@codemirror/commands": "^6.11.1",
@@ -93,5 +100,8 @@
     "vite": "^8.0.10",
     "vitest": "^5.0.2",
     "wait-on": "^9.0.5"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
   }
 }
