@@ -6,6 +6,7 @@ import {
   ArrowLeft,
   Loader2,
   AlertCircle,
+  Fingerprint,
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -26,6 +27,7 @@ import {
   CorruptVaultError,
   type VaultKey,
 } from "@/lib/crypto";
+import { useBiometric } from "@/lib/use-biometric";
 import { basename, dirname } from "@/lib/utils";
 
 type Mode =
@@ -103,6 +105,41 @@ export function LandingPage({ initialOpenPath, onUnlock }: Props) {
     setError(unlockErrorMessage(err, filePath));
     if (err instanceof FileMissingError) forgetRecent(filePath);
     setLoading(false);
+  }
+
+  const resumeBiometric = useBiometric(lastFile);
+  const openBiometric = useBiometric(
+    mode.type === "open" ? mode.filePath : null
+  );
+
+  async function handleBiometricUnlock(filePath: string) {
+    setLoading(true);
+    setError("");
+    let password: string;
+    try {
+      password = await window.electron.unlockWithBiometric(filePath);
+    } catch {
+      setError("Touch ID was cancelled or didn't match");
+      setLoading(false);
+      return;
+    }
+    try {
+      const { content, vaultKey } = await openVault(filePath, password);
+      onUnlock(filePath, vaultKey, content);
+    } catch (err) {
+      if (err instanceof WrongPasswordError) {
+        // Password was changed elsewhere; the saved one is useless now.
+        await window.electron.disableBiometric(filePath);
+        resumeBiometric.refresh();
+        openBiometric.refresh();
+        setError(
+          "The password saved for Touch ID no longer works. Enter your password; you can turn Touch ID on again in vault settings."
+        );
+        setLoading(false);
+      } else {
+        handleUnlockError(err, filePath);
+      }
+    }
   }
 
   function openRecent(filePath: string) {
@@ -254,6 +291,20 @@ export function LandingPage({ initialOpenPath, onUnlock }: Props) {
                         "Unlock"
                       )}
                     </Button>
+                    {resumeBiometric.enabled && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="px-2"
+                        disabled={loading}
+                        onClick={() => handleBiometricUnlock(lastFile)}
+                        title="Unlock with Touch ID"
+                        aria-label="Unlock with Touch ID"
+                      >
+                        <Fingerprint className="h-4 w-4" />
+                      </Button>
+                    )}
                   </form>
                 </CardContent>
               </Card>
@@ -418,6 +469,20 @@ export function LandingPage({ initialOpenPath, onUnlock }: Props) {
                     "Unlock"
                   )}
                 </Button>
+                {openBiometric.enabled && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="px-2"
+                    disabled={loading}
+                    onClick={() => handleBiometricUnlock(mode.filePath)}
+                    title="Unlock with Touch ID"
+                    aria-label="Unlock with Touch ID"
+                  >
+                    <Fingerprint className="h-4 w-4" />
+                  </Button>
+                )}
               </form>
             </CardContent>
           </Card>

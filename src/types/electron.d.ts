@@ -38,6 +38,16 @@ declare global {
       /** Move a vault to the top of the recent list. */
       addRecent: (path: string) => Promise<void>;
       removeRecent: (path: string) => Promise<void>;
+      /** Touch ID can be used on this machine. */
+      biometricAvailable: () => Promise<boolean>;
+      biometricEnabled: (path: string) => Promise<boolean>;
+      /** Prompts for Touch ID, then saves the password for this vault. */
+      enableBiometric: (path: string, password: string) => Promise<void>;
+      /** Re-saves the password if Touch ID is enabled for this vault. */
+      updateBiometric: (path: string, password: string) => Promise<void>;
+      disableBiometric: (path: string) => Promise<void>;
+      /** Prompts for Touch ID and resolves to the saved password. */
+      unlockWithBiometric: (path: string) => Promise<string>;
       storeGet: <K extends keyof StoreSchema>(
         key: K
       ) => Promise<StoreSchema[K] | null>;

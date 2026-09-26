@@ -34,6 +34,14 @@ contextBridge.exposeInMainWorld("electron", {
   listRecents: () => ipcRenderer.invoke("recent:list"),
   addRecent: (path) => ipcRenderer.invoke("recent:add", path),
   removeRecent: (path) => ipcRenderer.invoke("recent:remove", path),
+  biometricAvailable: () => ipcRenderer.invoke("bio:available"),
+  biometricEnabled: (path) => ipcRenderer.invoke("bio:has", path),
+  enableBiometric: (path, password) =>
+    ipcRenderer.invoke("bio:enable", path, password),
+  updateBiometric: (path, password) =>
+    ipcRenderer.invoke("bio:update", path, password),
+  disableBiometric: (path) => ipcRenderer.invoke("bio:disable", path),
+  unlockWithBiometric: (path) => ipcRenderer.invoke("bio:unlock", path),
   storeGet: (key) => ipcRenderer.invoke("store:get", key),
   storeSet: (key, value) => ipcRenderer.invoke("store:set", key, value),
   takePendingOpen: () => ipcRenderer.invoke("app:take-pending-open"),

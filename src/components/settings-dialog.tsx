@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { WrongPasswordError } from "@/lib/crypto";
+import { useBiometric } from "@/lib/use-biometric";
 
 const AUTO_LOCK_OPTIONS = [
   { value: 1, label: "After 1 minute" },
@@ -21,6 +22,8 @@ interface Props {
   autoLockMinutes: number;
   onAutoLockChange: (minutes: number) => void;
   onChangePassword: (current: string, next: string) => Promise<void>;
+  /** Verifies the password, then turns on Touch ID for this vault. */
+  onEnableBiometric: (password: string) => Promise<void>;
   onRestore: (backupId: string, password?: string) => Promise<RestoreResult>;
   onClose: () => void;
 }
@@ -61,9 +64,12 @@ export function SettingsDialog({
   autoLockMinutes,
   onAutoLockChange,
   onChangePassword,
+  onEnableBiometric,
   onRestore,
   onClose,
 }: Props) {
+  const biometric = useBiometric(filePath);
+  const [bioStatus, setBioStatus] = useState<Status>({ kind: "idle" });
   const [pwStatus, setPwStatus] = useState<Status>({ kind: "idle" });
   const [backups, setBackups] = useState<BackupInfo[] | null>(null);
   const [restoreStatus, setRestoreStatus] = useState<Status>({ kind: "idle" });
@@ -130,7 +136,39 @@ export function SettingsDialog({
     }
   }
 
-  const busy = pwStatus.kind === "busy" || restoreStatus.kind === "busy";
+  async function handleEnableBiometric(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const form = e.currentTarget;
+    const password = (form.elements.namedItem("bio-password") as HTMLInputElement)
+      .value;
+    if (!password) return;
+    setBioStatus({ kind: "busy" });
+    try {
+      await onEnableBiometric(password);
+      form.reset();
+      biometric.refresh();
+      setBioStatus({ kind: "ok", message: "Touch ID turned on" });
+    } catch (err) {
+      setBioStatus({
+        kind: "error",
+        message:
+          err instanceof WrongPasswordError
+            ? "Wrong password"
+            : "Touch ID was cancelled or didn't match",
+      });
+    }
+  }
+
+  async function handleDisableBiometric() {
+    await window.electron.disableBiometric(filePath);
+    biometric.refresh();
+    setBioStatus({ kind: "ok", message: "Touch ID turned off" });
+  }
+
+  const busy =
+    pwStatus.kind === "busy" ||
+    restoreStatus.kind === "busy" ||
+    bioStatus.kind === "busy";
 
   return (
     <div
@@ -221,6 +259,52 @@ export function SettingsDialog({
               </div>
             </form>
           </section>
+
+          {/* Touch ID (macOS only) */}
+          {biometric.available && (
+            <section className="space-y-2">
+              <h3 className="text-sm font-medium">Touch ID</h3>
+              {biometric.enabled ? (
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs text-muted-foreground">
+                    This vault can be unlocked with Touch ID on this Mac.
+                  </p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={busy}
+                    onClick={handleDisableBiometric}
+                  >
+                    Turn off
+                  </Button>
+                </div>
+              ) : (
+                <form onSubmit={handleEnableBiometric} className="space-y-2">
+                  <p className="text-xs text-muted-foreground">
+                    Your password is stored encrypted in this Mac&apos;s
+                    Keychain and released only after Touch ID. Anyone who can
+                    pass Touch ID on this Mac can open the vault.
+                  </p>
+                  <div className="flex gap-2">
+                    <Input
+                      name="bio-password"
+                      type="password"
+                      placeholder="Current password"
+                      disabled={busy}
+                    />
+                    <Button type="submit" size="sm" className="h-9" disabled={busy}>
+                      {bioStatus.kind === "busy" ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        "Turn on"
+                      )}
+                    </Button>
+                  </div>
+                </form>
+              )}
+              <StatusLine status={bioStatus} />
+            </section>
+          )}
 
           {/* Backups */}
           <section className="space-y-2">

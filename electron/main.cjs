@@ -7,6 +7,8 @@ const {
   nativeImage,
   powerMonitor,
   nativeTheme,
+  safeStorage,
+  systemPreferences,
 } = require("electron");
 const path = require("path");
 const fs = require("fs");
@@ -307,6 +309,84 @@ handle("recent:add", async (_, filePath) => {
 handle("recent:remove", async (_, filePath) => {
   if (typeof filePath !== "string") return;
   writeRecents(readRecents().filter((r) => r !== filePath));
+});
+
+// --- Touch ID ------------------------------------------------------------------
+// Opt-in per vault. The password is encrypted with safeStorage (key held in the
+// macOS Keychain) and only released to the renderer after a successful Touch ID
+// prompt. The "biometric" store entry is not reachable through store:get/set.
+
+function biometricAvailable() {
+  return (
+    process.platform === "darwin" &&
+    systemPreferences.canPromptTouchID() &&
+    safeStorage.isEncryptionAvailable()
+  );
+}
+
+function readBiometric() {
+  const { biometric } = readStore();
+  return biometric && typeof biometric === "object" ? biometric : {};
+}
+
+function writeBiometric(map) {
+  const store = readStore();
+  store.biometric = map;
+  writeStore(store);
+}
+
+function sealPassword(password) {
+  if (typeof password !== "string" || !password) {
+    throw new Error("Invalid password");
+  }
+  return safeStorage.encryptString(password).toString("base64");
+}
+
+handle("bio:available", async () => biometricAvailable());
+
+handle("bio:has", async (_, filePath) => {
+  return (
+    biometricAvailable() &&
+    typeof readBiometric()[assertAllowed(filePath)] === "string"
+  );
+});
+
+handle("bio:enable", async (_, filePath, password) => {
+  const target = assertAllowed(filePath);
+  if (!biometricAvailable()) throw new Error("Touch ID is not available");
+  const sealed = sealPassword(password);
+  await systemPreferences.promptTouchID(
+    `turn on Touch ID for “${path.basename(target)}”`
+  );
+  writeBiometric({ ...readBiometric(), [target]: sealed });
+});
+
+// Keep the saved password in sync after a password change (no-op if Touch ID
+// isn't enabled for this vault).
+handle("bio:update", async (_, filePath, password) => {
+  const target = assertAllowed(filePath);
+  const map = readBiometric();
+  if (!(target in map)) return;
+  if (biometricAvailable()) map[target] = sealPassword(password);
+  else delete map[target];
+  writeBiometric(map);
+});
+
+handle("bio:disable", async (_, filePath) => {
+  if (typeof filePath !== "string") return;
+  const map = readBiometric();
+  delete map[path.resolve(filePath)];
+  writeBiometric(map);
+});
+
+handle("bio:unlock", async (_, filePath) => {
+  const target = assertAllowed(filePath);
+  const sealed = readBiometric()[target];
+  if (!biometricAvailable() || typeof sealed !== "string") {
+    throw new Error("Touch ID is not set up for this vault");
+  }
+  await systemPreferences.promptTouchID(`unlock “${path.basename(target)}”`);
+  return safeStorage.decryptString(Buffer.from(sealed, "base64"));
 });
 
 const STORE_KEYS = new Set(["autoLockMinutes", "viewMode"]);

@@ -13,6 +13,7 @@ ever decrypted in memory.
 - Autosave with atomic writes; pending edits are flushed on lock and quit
 - Auto-lock when idle (configurable), on screen lock and on sleep
 - Change password
+- Optional Touch ID unlock per vault (macOS)
 - Automatic encrypted backups with in-app restore
 - Open vaults from Finder/Explorer or by dropping them onto the window
 
@@ -26,6 +27,13 @@ ever decrypted in memory.
 | In memory | Only the derived, non-extractable `CryptoKey` is kept after unlocking; the password is discarded |
 | Renderer isolation | Context isolation + sandbox, strict CSP in production, external links open in the system browser |
 | File access | The renderer can only read/write files the user chose through a dialog, drag-and-drop or the OS |
+
+**Touch ID** is opt-in per vault. When enabled, the password is encrypted with
+Electron `safeStorage` (key held in the macOS Keychain) and stored in the app's
+settings; the main process releases it to the renderer only after a successful
+Touch ID prompt. Anyone who can pass Touch ID on that Mac can open the vault.
+If the saved password stops working (e.g. it was changed on another machine),
+the entry is discarded.
 
 There is no password recovery. If you forget the password, the vault cannot be
 decrypted.

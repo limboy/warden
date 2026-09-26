@@ -260,8 +260,19 @@ export function EditorPage({
       // current key.
       await unlock(await window.electron.readFile(filePath), current);
       await persist({ rekey: await createVaultKey(next) });
+      // Keep a Touch ID-saved password in sync; failure only means Touch ID
+      // will ask for the password next time.
+      await window.electron.updateBiometric(filePath, next).catch(() => {});
     },
     [filePath, persist]
+  );
+
+  const handleEnableBiometric = useCallback(
+    async (password: string) => {
+      await unlock(await window.electron.readFile(filePath), password);
+      await window.electron.enableBiometric(filePath, password);
+    },
+    [filePath]
   );
 
   const handleRestore = useCallback(
@@ -409,6 +420,7 @@ export function EditorPage({
           autoLockMinutes={autoLockMinutes}
           onAutoLockChange={handleAutoLockChange}
           onChangePassword={handleChangePassword}
+          onEnableBiometric={handleEnableBiometric}
           onRestore={handleRestore}
           onClose={closeSettings}
         />
