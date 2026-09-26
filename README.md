@@ -113,8 +113,9 @@ git push --follow-tags
 ```
 
 To sign and notarize, add these repository secrets: `CSC_LINK` (base64 of a
-Developer ID Application `.p12`), `CSC_KEY_PASSWORD`, `APPLE_ID`,
-`APPLE_APP_SPECIFIC_PASSWORD` and `APPLE_TEAM_ID`. Without them the app gets an
+Developer ID Application `.p12`), `CSC_KEY_PASSWORD`, and for an App Store
+Connect API key `APPLE_API_KEY_P8` (contents of the `.p8`), `APPLE_API_KEY_ID`
+and `APPLE_API_ISSUER`. Without them the app gets an
 ad-hoc signature, and users must allow the first launch in System Settings →
 Privacy & Security → Open Anyway (the release notes explain this).
 
