@@ -81,6 +81,15 @@ npm run build:mac   # unpacked .app in release/
 npm run build:dmg   # .dmg installer
 ```
 
+To build and install into `/Applications` in one step (quits a running Warden
+first):
+
+```bash
+npm run install:mac                  # build + install
+npm run install:mac -- --unsigned    # skip code signing
+npm run install:mac -- --skip-build --open
+```
+
 Code signing uses whatever Developer ID certificate electron-builder finds in
 the keychain. For a local unsigned build, set `CSC_IDENTITY_AUTO_DISCOVERY=false`.
 

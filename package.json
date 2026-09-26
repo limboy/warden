@@ -10,6 +10,7 @@
     "build": "tsc -b && vite build",
     "build:mac": "npm run build && electron-builder --mac --dir",
     "build:dmg": "npm run build && electron-builder --mac",
+    "install:mac": "bash scripts/install-mac.sh",
     "lint": "eslint .",
     "test": "vitest run",
     "preview": "vite preview"
