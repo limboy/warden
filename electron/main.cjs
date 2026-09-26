@@ -2,6 +2,7 @@ const {
   app,
   BrowserWindow,
   ipcMain,
+  Menu,
   dialog,
   shell,
   nativeImage,
@@ -39,6 +40,8 @@ function assertAllowed(p) {
 }
 
 const VAULT_EXT = ".warden";
+
+const VAULT_FILTERS = [{ name: "Warden Vault", extensions: ["warden"] }];
 
 function isVaultPath(p) {
   return typeof p === "string" && p.toLowerCase().endsWith(VAULT_EXT);
@@ -215,13 +218,17 @@ function createWindow() {
   } else {
     win.loadFile(PROD_INDEX);
   }
+
+  // A reload or closed window drops whatever vault was open.
+  win.webContents.on("did-start-loading", () => setOpenVault(null));
+  win.on("closed", () => setOpenVault(null));
 }
 
 handle("dialog:save", async (event, defaultName) => {
   const win = BrowserWindow.fromWebContents(event.sender);
   const { canceled, filePath } = await dialog.showSaveDialog(win, {
     defaultPath: typeof defaultName === "string" ? defaultName : "vault.warden",
-    filters: [{ name: "Warden Vault", extensions: ["warden"] }],
+    filters: VAULT_FILTERS,
   });
   return canceled || !filePath ? null : allowPath(filePath);
 });
@@ -229,7 +236,7 @@ handle("dialog:save", async (event, defaultName) => {
 handle("dialog:open", async (event) => {
   const win = BrowserWindow.fromWebContents(event.sender);
   const { canceled, filePaths } = await dialog.showOpenDialog(win, {
-    filters: [{ name: "Warden Vault", extensions: ["warden"] }],
+    filters: VAULT_FILTERS,
     properties: ["openFile"],
   });
   return canceled || !filePaths[0] ? null : allowPath(filePaths[0]);
@@ -295,6 +302,7 @@ function writeRecents(list) {
   const store = readStore();
   store.recentFiles = list.slice(0, RECENT_MAX);
   writeStore(store);
+  buildMenu();
 }
 
 handle("recent:list", async () => {
@@ -411,15 +419,16 @@ handle("store:set", async (_, key, value) => {
   writeStore(store);
 });
 
-// --- Opening vaults from Finder / Explorer ------------------------------------
-// The path is parked in `pendingOpen` and the renderer is poked to fetch it, so
-// requests that arrive before the page has loaded aren't lost.
+// --- Opening vaults from Finder / Explorer / the File menu ---------------------
+// The request is parked in `pendingOpen` and the renderer is poked to fetch it,
+// so requests that arrive before the page has loaded aren't lost. `create`
+// asks for a new vault to be set up at that path.
 
 let pendingOpen = null;
 
-function requestOpen(filePath) {
+function requestOpen(filePath, { create = false } = {}) {
   if (!isVaultPath(filePath)) return;
-  pendingOpen = allowPath(filePath);
+  pendingOpen = { path: allowPath(filePath), create };
   const [win] = BrowserWindow.getAllWindows();
   if (win) {
     if (win.isMinimized()) win.restore();
@@ -428,6 +437,125 @@ function requestOpen(filePath) {
   } else if (app.isReady()) {
     createWindow();
   }
+}
+
+// --- Application menu -----------------------------------------------------------
+// Vault commands are enabled only while a vault is unlocked; the renderer
+// reports which one through "app:vault-state".
+
+let openVaultPath = null;
+
+function setOpenVault(filePath) {
+  if (openVaultPath === filePath) return;
+  openVaultPath = filePath;
+  buildMenu();
+}
+
+handle("app:vault-state", async (_, filePath) => {
+  setOpenVault(filePath === null ? null : assertAllowed(filePath));
+});
+
+function sendMenuCommand(command) {
+  const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+  win?.webContents.send("menu:command", command);
+}
+
+async function newVaultFromMenu() {
+  const win = BrowserWindow.getFocusedWindow() ?? undefined;
+  const { canceled, filePath } = await dialog.showSaveDialog(win, {
+    defaultPath: "vault.warden",
+    filters: VAULT_FILTERS,
+  });
+  if (canceled || !filePath) return;
+  if (fs.existsSync(filePath)) {
+    await dialog.showMessageBox(win, {
+      type: "warning",
+      message: `${path.basename(filePath)} already exists`,
+      detail: "Choose a new name, or use Open Vault.",
+    });
+    return;
+  }
+  requestOpen(filePath, { create: true });
+}
+
+async function openVaultFromMenu() {
+  const win = BrowserWindow.getFocusedWindow() ?? undefined;
+  const { canceled, filePaths } = await dialog.showOpenDialog(win, {
+    filters: VAULT_FILTERS,
+    properties: ["openFile"],
+  });
+  if (!canceled && filePaths[0]) requestOpen(filePaths[0]);
+}
+
+function buildMenu() {
+  if (!app.isReady()) return;
+  const isMac = process.platform === "darwin";
+  const vaultOpen = openVaultPath !== null;
+  const recents = readRecents();
+
+  const fileMenu = {
+    label: "File",
+    submenu: [
+      { label: "New Vault…", accelerator: "CmdOrCtrl+N", click: newVaultFromMenu },
+      { label: "Open Vault…", accelerator: "CmdOrCtrl+O", click: openVaultFromMenu },
+      {
+        label: "Open Recent",
+        submenu: [
+          ...recents.map((p) => ({
+            label: path.basename(p),
+            sublabel: path.dirname(p),
+            toolTip: p,
+            enabled: p !== openVaultPath && fs.existsSync(p),
+            click: () => requestOpen(p),
+          })),
+          ...(recents.length ? [{ type: "separator" }] : []),
+          {
+            label: "Clear Menu",
+            enabled: recents.length > 0,
+            click: () => writeRecents(openVaultPath ? [openVaultPath] : []),
+          },
+        ],
+      },
+      { type: "separator" },
+      {
+        label: "Save",
+        accelerator: "CmdOrCtrl+S",
+        enabled: vaultOpen,
+        click: () => sendMenuCommand("save"),
+      },
+      {
+        label: "Lock Vault",
+        accelerator: "CmdOrCtrl+L",
+        enabled: vaultOpen,
+        click: () => sendMenuCommand("lock"),
+      },
+      { type: "separator" },
+      {
+        label: isMac ? "Show in Finder" : "Show in Folder",
+        accelerator: "Alt+CmdOrCtrl+R",
+        enabled: vaultOpen,
+        click: () => openVaultPath && shell.showItemInFolder(openVaultPath),
+      },
+      {
+        label: "Vault Settings…",
+        accelerator: "CmdOrCtrl+,",
+        enabled: vaultOpen,
+        click: () => sendMenuCommand("settings"),
+      },
+      { type: "separator" },
+      isMac ? { role: "close" } : { role: "quit" },
+    ],
+  };
+
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate([
+      ...(isMac ? [{ role: "appMenu" }] : []),
+      fileMenu,
+      { role: "editMenu" },
+      { role: "viewMenu" },
+      { role: "windowMenu" },
+    ])
+  );
 }
 
 // macOS: must be registered before "ready" to catch launch-by-double-click.
@@ -481,6 +609,7 @@ if (!app.requestSingleInstanceLock()) {
     powerMonitor.on("lock-screen", lockAll);
     powerMonitor.on("suspend", lockAll);
 
+    buildMenu();
     createWindow();
   });
 }

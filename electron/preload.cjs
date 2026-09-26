@@ -47,6 +47,12 @@ contextBridge.exposeInMainWorld("electron", {
   takePendingOpen: () => ipcRenderer.invoke("app:take-pending-open"),
   onOpenFilePending: (cb) => subscribe("app:open-file-pending", cb),
   onSystemLock: (cb) => subscribe("app:system-lock", cb),
+  setVaultState: (path) => ipcRenderer.invoke("app:vault-state", path),
+  onMenuCommand: (cb) => {
+    const listener = (_, command) => cb(command);
+    ipcRenderer.on("menu:command", listener);
+    return () => ipcRenderer.removeListener("menu:command", listener);
+  },
   setBeforeCloseHandler: (fn) => {
     beforeCloseHandler = typeof fn === "function" ? fn : null;
   },

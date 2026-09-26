@@ -297,18 +297,26 @@ export function EditorPage({
 
   const closeSettings = useCallback(() => setSettingsOpen(false), []);
 
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "s") {
-        e.preventDefault();
-        flush();
-      }
-    },
-    [flush]
+  // File menu: enable the vault commands while this vault is open.
+  useEffect(() => {
+    window.electron.setVaultState(filePath);
+    return () => {
+      window.electron.setVaultState(null);
+    };
+  }, [filePath]);
+
+  useEffect(
+    () =>
+      window.electron.onMenuCommand((command) => {
+        if (command === "save") flush();
+        else if (command === "lock") handleLock();
+        else if (command === "settings") setSettingsOpen(true);
+      }),
+    [flush, handleLock]
   );
 
   return (
-    <div className="flex h-screen flex-col" onKeyDown={handleKeyDown}>
+    <div className="flex h-screen flex-col">
       {/* Title bar drag region + toolbar */}
       <div className="relative flex shrink-0 items-center justify-end border-b px-4 [-webkit-app-region:drag]"
         style={{ height: 52 }}

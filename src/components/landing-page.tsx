@@ -36,8 +36,8 @@ type Mode =
   | { type: "open"; filePath: string };
 
 interface Props {
-  /** Start in the unlock prompt for this vault (opened from the OS). */
-  initialOpenPath?: string;
+  /** Start in the unlock (or create) prompt for this vault. */
+  initialRequest?: OpenRequest;
   onUnlock: (filePath: string, vaultKey: VaultKey, content: string) => void;
 }
 
@@ -74,10 +74,13 @@ function unlockErrorMessage(err: unknown, filePath: string) {
 const actionCardClass =
   "flex flex-col items-center gap-2 rounded-xl border bg-card p-5 text-card-foreground shadow-sm transition-colors hover:border-foreground/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
-export function LandingPage({ initialOpenPath, onUnlock }: Props) {
+export function LandingPage({ initialRequest, onUnlock }: Props) {
   const [mode, setMode] = useState<Mode>(
-    initialOpenPath
-      ? { type: "open", filePath: initialOpenPath }
+    initialRequest
+      ? {
+          type: initialRequest.create ? "create" : "open",
+          filePath: initialRequest.path,
+        }
       : { type: "idle" }
   );
   const [recents, setRecents] = useState<RecentVault[]>([]);
@@ -404,6 +407,7 @@ export function LandingPage({ initialOpenPath, onUnlock }: Props) {
                     name="password"
                     type="password"
                     placeholder="Choose a password"
+                    autoFocus
                     disabled={loading}
                   />
                 </div>

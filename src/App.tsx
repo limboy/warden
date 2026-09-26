@@ -10,22 +10,22 @@ interface Session {
   content: string;
 }
 
-interface OpenRequest {
-  filePath: string;
+interface PendingRequest extends OpenRequest {
   id: number;
 }
 
 function App() {
   const [session, setSession] = useState<Session | null>(null);
-  const [openRequest, setOpenRequest] = useState<OpenRequest | null>(null);
+  const [openRequest, setOpenRequest] = useState<PendingRequest | null>(null);
 
-  // Vaults opened from Finder/Explorer or dropped onto the window: lock the
-  // current vault (if any) and show the unlock prompt for the new one.
+  // Vaults opened from Finder/Explorer or the File menu, or dropped onto the
+  // window: lock the current vault (if any) and show the unlock (or create)
+  // prompt for the new one.
   useEffect(() => {
     let nextId = 1;
-    const open = (filePath: string | null) => {
-      if (!filePath) return;
-      setOpenRequest({ filePath, id: nextId++ });
+    const open = (request: OpenRequest | null) => {
+      if (!request) return;
+      setOpenRequest({ ...request, id: nextId++ });
       requestLock();
     };
     const takePending = () => window.electron.takePendingOpen().then(open);
@@ -38,7 +38,8 @@ function App() {
       if (!hasFiles(e)) return;
       e.preventDefault();
       const file = e.dataTransfer?.files[0];
-      if (file) open(await window.electron.allowDroppedFile(file));
+      const path = file && (await window.electron.allowDroppedFile(file));
+      if (path) open({ path, create: false });
     };
 
     takePending();
@@ -67,7 +68,7 @@ function App() {
   return (
     <LandingPage
       key={openRequest?.id ?? 0}
-      initialOpenPath={openRequest?.filePath}
+      initialRequest={openRequest ?? undefined}
       onUnlock={(filePath, vaultKey, content) => {
         setOpenRequest(null);
         setSession({ filePath, vaultKey, content });

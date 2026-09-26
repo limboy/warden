@@ -13,6 +13,14 @@ declare global {
     exists: boolean;
   }
 
+  interface OpenRequest {
+    path: string;
+    /** Set up a new vault at `path` instead of unlocking it. */
+    create: boolean;
+  }
+
+  type MenuCommand = "save" | "lock" | "settings";
+
   interface StoreSchema {
     autoLockMinutes: number;
     viewMode: "edit" | "split" | "preview";
@@ -55,11 +63,14 @@ declare global {
         key: K,
         value: StoreSchema[K] | null
       ) => Promise<void>;
-      /** Fetch (and clear) a vault path the OS asked us to open. */
-      takePendingOpen: () => Promise<string | null>;
+      /** Fetch (and clear) a vault the OS or File menu asked us to open. */
+      takePendingOpen: () => Promise<OpenRequest | null>;
       onOpenFilePending: (cb: () => void) => () => void;
       /** Fired when the screen locks or the machine sleeps. */
       onSystemLock: (cb: () => void) => () => void;
+      /** Tell the menu which vault is unlocked (null when none). */
+      setVaultState: (path: string | null) => Promise<void>;
+      onMenuCommand: (cb: (command: MenuCommand) => void) => () => void;
       /** Called (and awaited) before the window closes; pass null to clear. */
       setBeforeCloseHandler: (fn: (() => Promise<void>) | null) => void;
     };
