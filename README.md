@@ -9,8 +9,7 @@ ever decrypted in memory.
 Download the DMG for your Mac from the
 [latest release](https://github.com/limboy/warden/releases/latest) (`arm64`
 for Apple Silicon, `x64` for Intel), open it and drag Warden into
-Applications. If macOS says it can't verify the app, open System Settings →
-Privacy & Security and click **Open Anyway**.
+Applications. Releases are signed and notarized by Apple.
 
 ## Features
 
@@ -113,11 +112,15 @@ git push --follow-tags
 ```
 
 To sign and notarize, add these repository secrets: `CSC_LINK` (base64 of a
-Developer ID Application `.p12`), `CSC_KEY_PASSWORD` (only if the `.p12` has one), and for an App Store
-Connect API key `APPLE_API_KEY_P8` (contents of the `.p8`), `APPLE_API_KEY_ID`
-and `APPLE_API_ISSUER`. Without them the app gets an
+Developer ID Application `.p12`), `CSC_KEY_PASSWORD` (only if the `.p12` has
+one), and for an App Store Connect API key `APPLE_API_KEY_P8` (contents of the
+`.p8`), `APPLE_API_KEY_ID` and `APPLE_API_ISSUER`. Without them the app gets an
 ad-hoc signature, and users must allow the first launch in System Settings →
 Privacy & Security → Open Anyway (the release notes explain this).
+
+With Claude Code, `/release [patch|minor|major|x.y.z]` runs the whole process:
+preflight checks, version bump, push, watching the build and verifying the
+published DMG.
 
 ## Project layout
 
