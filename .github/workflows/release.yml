@@ -92,6 +92,17 @@ jobs:
           npm run build
           npx electron-builder --mac dmg --arm64 --x64 --publish never
 
+      # LZMA-compressed DMGs are ~30% smaller than electron-builder's default
+      # (zlib), and its config doesn't offer this format. Needs macOS 10.15+,
+      # below Electron's own minimum.
+      - name: Recompress DMGs
+        run: |
+          for dmg in release/*.dmg; do
+            hdiutil convert -quiet "$dmg" -format ULMO -o "${dmg%.dmg}.ulmo.dmg"
+            mv "${dmg%.dmg}.ulmo.dmg" "$dmg"
+          done
+          ls -la release/*.dmg
+
       - uses: actions/upload-artifact@v4
         with:
           name: warden-mac
