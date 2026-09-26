@@ -33,7 +33,16 @@
     },
     "linux": {
       "target": "AppImage"
-    }
+    },
+    "fileAssociations": [
+      {
+        "ext": "warden",
+        "name": "Warden Vault",
+        "description": "Warden encrypted vault",
+        "role": "Editor",
+        "rank": "Owner"
+      }
+    ]
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.2.4",

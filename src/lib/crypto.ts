@@ -104,10 +104,17 @@ export interface UnlockResult {
   outdated: boolean;
 }
 
-export async function unlock(
-  data: string,
-  password: string
-): Promise<UnlockResult> {
+interface ParsedVault {
+  version: number;
+  iterations: number;
+  saltB64: string;
+  salt: Uint8Array<ArrayBuffer>;
+  iv: Uint8Array<ArrayBuffer>;
+  ct: Uint8Array<ArrayBuffer>;
+  aad?: Uint8Array<ArrayBuffer>;
+}
+
+function parseVault(data: string): ParsedVault {
   let parsed: {
     v?: unknown;
     kdf?: unknown;
@@ -145,31 +152,68 @@ export async function unlock(
     throw new CorruptVaultError(`unsupported version ${String(parsed.v)}`);
   }
 
-  let salt, iv, ct;
   try {
-    salt = fromBase64(parsed.salt);
-    iv = fromBase64(parsed.iv);
-    ct = fromBase64(parsed.ct);
+    return {
+      version: parsed.v,
+      iterations,
+      saltB64: parsed.salt,
+      salt: fromBase64(parsed.salt),
+      iv: fromBase64(parsed.iv),
+      ct: fromBase64(parsed.ct),
+      aad,
+    };
   } catch {
     throw new CorruptVaultError("invalid encoding");
   }
+}
 
-  const key = await deriveKey(password, salt, iterations);
+async function decryptParsed(p: ParsedVault, key: CryptoKey): Promise<string> {
   let plaintext: ArrayBuffer;
   try {
     plaintext = await crypto.subtle.decrypt(
-      aad ? { name: "AES-GCM", iv, additionalData: aad } : { name: "AES-GCM", iv },
+      p.aad
+        ? { name: "AES-GCM", iv: p.iv, additionalData: p.aad }
+        : { name: "AES-GCM", iv: p.iv },
       key,
-      ct
+      p.ct
     );
   } catch {
     // AES-GCM cannot distinguish a wrong key from tampered ciphertext.
     throw new WrongPasswordError();
   }
+  return new TextDecoder().decode(plaintext);
+}
 
+export async function unlock(
+  data: string,
+  password: string
+): Promise<UnlockResult> {
+  const parsed = parseVault(data);
+  const key = await deriveKey(password, parsed.salt, parsed.iterations);
+  const content = await decryptParsed(parsed, key);
   return {
-    content: new TextDecoder().decode(plaintext),
-    vaultKey: { key, salt, iterations },
-    outdated: parsed.v !== FORMAT_VERSION || iterations < PBKDF2_ITERATIONS,
+    content,
+    vaultKey: { key, salt: parsed.salt, iterations: parsed.iterations },
+    outdated:
+      parsed.version !== FORMAT_VERSION ||
+      parsed.iterations < PBKDF2_ITERATIONS,
   };
+}
+
+/**
+ * Decrypt with an existing key, without a password. Returns null when the file
+ * was written with different KDF parameters (e.g. before a password change).
+ */
+export async function unlockWithKey(
+  data: string,
+  vk: VaultKey
+): Promise<string | null> {
+  const parsed = parseVault(data);
+  if (
+    parsed.saltB64 !== toBase64(vk.salt) ||
+    parsed.iterations !== vk.iterations
+  ) {
+    return null;
+  }
+  return decryptParsed(parsed, vk.key);
 }

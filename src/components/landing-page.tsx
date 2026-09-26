@@ -33,6 +33,8 @@ type Mode =
   | { type: "open"; filePath: string };
 
 interface Props {
+  /** Start in the unlock prompt for this vault (opened from the OS). */
+  initialOpenPath?: string;
   onUnlock: (filePath: string, vaultKey: VaultKey, content: string) => void;
 }
 
@@ -69,8 +71,12 @@ function unlockErrorMessage(err: unknown, filePath: string) {
 const actionCardClass =
   "flex flex-col items-center gap-2 rounded-xl border bg-card p-5 text-card-foreground shadow-sm transition-colors hover:border-foreground/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
-export function LandingPage({ onUnlock }: Props) {
-  const [mode, setMode] = useState<Mode>({ type: "idle" });
+export function LandingPage({ initialOpenPath, onUnlock }: Props) {
+  const [mode, setMode] = useState<Mode>(
+    initialOpenPath
+      ? { type: "open", filePath: initialOpenPath }
+      : { type: "idle" }
+  );
   const [lastFile, setLastFile] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -256,6 +262,9 @@ export function LandingPage({ onUnlock }: Props) {
                 <span className="text-sm font-medium">Open Vault</span>
               </button>
             </div>
+            <p className="text-center text-xs text-muted-foreground">
+              Or drop a .warden file onto this window
+            </p>
           </>
         )}
 
@@ -347,6 +356,7 @@ export function LandingPage({ onUnlock }: Props) {
                   name="password"
                   type="password"
                   placeholder="Password"
+                  autoFocus
                   disabled={loading}
                 />
                 <Button type="submit" size="sm" disabled={loading}>

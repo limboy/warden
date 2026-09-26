@@ -5,9 +5,11 @@ const {
   dialog,
   shell,
   nativeImage,
+  powerMonitor,
 } = require("electron");
 const path = require("path");
 const fs = require("fs");
+const crypto = require("crypto");
 const { fileURLToPath } = require("url");
 
 const isDev = !app.isPackaged;
@@ -31,6 +33,59 @@ function assertAllowed(p) {
     throw new Error("Access to this path is not allowed");
   }
   return path.resolve(p);
+}
+
+const VAULT_EXT = ".warden";
+
+function isVaultPath(p) {
+  return typeof p === "string" && p.toLowerCase().endsWith(VAULT_EXT);
+}
+
+// --- Backups ----------------------------------------------------------------
+// Before overwriting a vault, snapshot the previous (still encrypted) file into
+// userData/backups/<hash of path>/. At most one snapshot per interval, unless
+// forced (password change, restore).
+
+const BACKUP_INTERVAL_MS = 10 * 60 * 1000;
+const BACKUP_KEEP = 30;
+const lastBackupAt = new Map();
+
+function backupDir(filePath) {
+  const id = crypto.createHash("sha256").update(filePath).digest("hex");
+  return path.join(app.getPath("userData"), "backups", id.slice(0, 16));
+}
+
+function listBackupFiles(filePath) {
+  const dir = backupDir(filePath);
+  let names;
+  try {
+    names = fs.readdirSync(dir);
+  } catch {
+    return [];
+  }
+  return names
+    .filter((n) => n.endsWith(VAULT_EXT))
+    .map((n) => {
+      const stat = fs.statSync(path.join(dir, n));
+      return { id: n, time: stat.mtimeMs, size: stat.size };
+    })
+    .sort((a, b) => b.time - a.time);
+}
+
+function snapshot(filePath, force) {
+  const now = Date.now();
+  if (!force && now - (lastBackupAt.get(filePath) ?? 0) < BACKUP_INTERVAL_MS) {
+    return;
+  }
+  if (!fs.existsSync(filePath)) return;
+  const dir = backupDir(filePath);
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const name = new Date(now).toISOString().replace(/[:.]/g, "-") + VAULT_EXT;
+  fs.copyFileSync(filePath, path.join(dir, name));
+  lastBackupAt.set(filePath, now);
+  for (const old of listBackupFiles(filePath).slice(BACKUP_KEEP)) {
+    fs.rmSync(path.join(dir, old.id), { force: true });
+  }
 }
 
 function readStore() {
@@ -179,16 +234,49 @@ handle("file:read", async (_, filePath) => {
   return fs.readFileSync(assertAllowed(filePath), "utf-8");
 });
 
-handle("file:write", async (_, filePath, data) => {
+handle("file:write", async (_, filePath, data, opts) => {
   if (typeof data !== "string") throw new Error("Invalid data");
-  writeFileAtomic(assertAllowed(filePath), data);
+  const target = assertAllowed(filePath);
+  try {
+    snapshot(target, opts?.forceBackup === true);
+  } catch (err) {
+    // A failed backup must not block saving the user's work.
+    console.error("Backup failed:", err);
+  }
+  writeFileAtomic(target, data);
+});
+
+handle("file:allow-dropped", async (_, filePath) => {
+  // Paths come from webUtils.getPathForFile on a real dropped File; still,
+  // only ever grant access to existing vault files.
+  if (!isVaultPath(filePath) || !fs.existsSync(filePath)) return null;
+  return allowPath(filePath);
+});
+
+handle("backup:list", async (_, filePath) => {
+  return listBackupFiles(assertAllowed(filePath));
+});
+
+handle("backup:read", async (_, filePath, id) => {
+  const target = assertAllowed(filePath);
+  if (typeof id !== "string" || !/^[\w-]+\.warden$/.test(id)) {
+    throw new Error("Invalid backup id");
+  }
+  return fs.readFileSync(path.join(backupDir(target), id), "utf-8");
+});
+
+handle("app:take-pending-open", async () => {
+  const p = pendingOpen;
+  pendingOpen = null;
+  return p;
 });
 
 handle("file:exists", async (_, filePath) => {
   return fs.existsSync(assertAllowed(filePath));
 });
 
-const STORE_KEYS = new Set(["lastFile"]);
+const STORE_KEYS = new Set(["lastFile", "autoLockMinutes"]);
+const AUTO_LOCK_CHOICES = new Set([0, 1, 5, 15, 30, 60]);
 
 handle("store:get", async (_, key) => {
   if (!STORE_KEYS.has(key)) throw new Error("Unknown store key");
@@ -198,19 +286,52 @@ handle("store:get", async (_, key) => {
 handle("store:set", async (_, key, value) => {
   if (!STORE_KEYS.has(key)) throw new Error("Unknown store key");
   if (key === "lastFile" && value !== null) assertAllowed(value);
+  if (key === "autoLockMinutes" && !AUTO_LOCK_CHOICES.has(value)) {
+    throw new Error("Invalid auto-lock value");
+  }
   const store = readStore();
   store[key] = value;
   writeStore(store);
 });
 
+// --- Opening vaults from Finder / Explorer ------------------------------------
+// The path is parked in `pendingOpen` and the renderer is poked to fetch it, so
+// requests that arrive before the page has loaded aren't lost.
+
+let pendingOpen = null;
+
+function requestOpen(filePath) {
+  if (!isVaultPath(filePath)) return;
+  pendingOpen = allowPath(filePath);
+  const [win] = BrowserWindow.getAllWindows();
+  if (win) {
+    if (win.isMinimized()) win.restore();
+    win.focus();
+    win.webContents.send("app:open-file-pending");
+  } else if (app.isReady()) {
+    createWindow();
+  }
+}
+
+// macOS: must be registered before "ready" to catch launch-by-double-click.
+app.on("open-file", (event, filePath) => {
+  event.preventDefault();
+  requestOpen(filePath);
+});
+
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.on("second-instance", () => {
-    const [win] = BrowserWindow.getAllWindows();
-    if (win) {
-      if (win.isMinimized()) win.restore();
-      win.focus();
+  app.on("second-instance", (_, argv) => {
+    const file = argv.slice(1).find(isVaultPath);
+    if (file) {
+      requestOpen(file);
+    } else {
+      const [win] = BrowserWindow.getAllWindows();
+      if (win) {
+        if (win.isMinimized()) win.restore();
+        win.focus();
+      }
     }
   });
 
@@ -224,6 +345,19 @@ if (!app.requestSingleInstanceLock()) {
         nativeImage.createFromPath(path.join(__dirname, "../build/icon.png"))
       );
     }
+    // Windows / Linux pass the file on the command line.
+    const argFile = process.argv.slice(1).find(isVaultPath);
+    if (argFile) requestOpen(argFile);
+
+    // Lock open vaults when the machine locks or sleeps.
+    const lockAll = () => {
+      for (const w of BrowserWindow.getAllWindows()) {
+        w.webContents.send("app:system-lock");
+      }
+    };
+    powerMonitor.on("lock-screen", lockAll);
+    powerMonitor.on("suspend", lockAll);
+
     createWindow();
   });
 }
