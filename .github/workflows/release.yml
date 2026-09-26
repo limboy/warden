@@ -8,7 +8,7 @@
 # an ad-hoc signature and users have to approve it once in System Settings.
 #
 #   CSC_LINK          base64 of the Developer ID Application .p12
-#   CSC_KEY_PASSWORD  password of the .p12
+#   CSC_KEY_PASSWORD  password of the .p12 (omit if it has none)
 #   APPLE_API_KEY_P8  contents of the App Store Connect API key (AuthKey_XXXX.p8)
 #   APPLE_API_KEY_ID  ID of that key (the XXXX in the file name)
 #   APPLE_API_ISSUER  issuer ID shown above the keys list in App Store Connect
@@ -47,17 +47,39 @@ jobs:
 
       - run: npm test
 
-      - name: Build DMGs
+      # Import the certificate ourselves instead of passing CSC_LINK to
+      # electron-builder: its own import unlocks the temp keychain with the .p12
+      # password, which fails for a .p12 exported without one.
+      - name: Import signing certificate
         env:
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+        run: |
+          if [[ -z "$CSC_LINK" ]]; then
+            echo "No CSC_LINK secret; the app will be ad-hoc signed."
+            exit 0
+          fi
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          keychain_password="$(openssl rand -base64 32)"
+          printf '%s' "$CSC_LINK" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$RUNNER_TEMP/cert.p12" -k "$keychain" -P "$CSC_KEY_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$keychain_password" "$keychain" >/dev/null
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          rm "$RUNNER_TEMP/cert.p12"
+          security find-identity -v -p codesigning "$keychain"
+
+      - name: Build DMGs
+        env:
           APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
         run: |
-          # Unset empty secrets so electron-builder falls back to ad-hoc signing
-          # and skips notarization instead of failing on blank values.
-          for name in CSC_LINK CSC_KEY_PASSWORD APPLE_API_KEY_ID APPLE_API_ISSUER; do
+          # Unset empty secrets so electron-builder skips notarization instead
+          # of failing on blank values.
+          for name in APPLE_API_KEY_ID APPLE_API_ISSUER; do
             [[ -z "${!name}" ]] && unset "$name"
           done
           # electron-builder expects APPLE_API_KEY to be a path to the .p8 file.
@@ -66,6 +88,7 @@ jobs:
             printf '%s\n' "$APPLE_API_KEY_P8" > "$APPLE_API_KEY"
           fi
           unset APPLE_API_KEY_P8
+          # Signs with the Developer ID found in the keychain, or ad-hoc if none.
           npm run build
           npx electron-builder --mac dmg --arm64 --x64 --publish never
 
