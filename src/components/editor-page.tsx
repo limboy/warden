@@ -1,10 +1,18 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import {
+  memo,
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
   Lock,
   Eye,
-  Pencil,
+  PenLine,
+  Columns2,
   Check,
   Loader2,
   AlertCircle,
@@ -30,6 +38,23 @@ import { onLockRequest } from "@/lib/lock-bus";
 import { basename } from "@/lib/utils";
 
 type SaveStatus = "saved" | "unsaved" | "saving" | "error";
+type ViewMode = StoreSchema["viewMode"];
+
+const VIEW_MODES: { mode: ViewMode; label: string; Icon: typeof Eye }[] = [
+  { mode: "edit", label: "Editor only", Icon: PenLine },
+  { mode: "split", label: "Editor and preview", Icon: Columns2 },
+  { mode: "preview", label: "Preview only", Icon: Eye },
+];
+
+const Preview = memo(function Preview({ markdown }: { markdown: string }) {
+  return (
+    <article className="prose prose-neutral mx-auto max-w-3xl p-8 dark:prose-invert">
+      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+        {markdown || "*Empty vault — switch to the editor to start writing.*"}
+      </ReactMarkdown>
+    </article>
+  );
+});
 
 const AUTOSAVE_DELAY = 800;
 const DEFAULT_AUTO_LOCK_MINUTES = 5;
@@ -49,7 +74,9 @@ export function EditorPage({
   onLock,
 }: Props) {
   const [content, setContent] = useState(initialContent);
-  const [preview, setPreview] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>("edit");
+  // Rendering markdown is slower than typing; let the preview lag behind.
+  const previewContent = useDeferredValue(content);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
   const [saveError, setSaveError] = useState("");
   const [locking, setLocking] = useState(false);
@@ -143,8 +170,19 @@ export function EditorPage({
   }, [fileName]);
 
   useEffect(() => {
-    if (!preview) editorRef.current?.focus();
-  }, [preview]);
+    if (viewMode !== "preview") editorRef.current?.focus();
+  }, [viewMode]);
+
+  useEffect(() => {
+    window.electron.storeGet("viewMode").then((v) => {
+      if (v) setViewMode(v);
+    });
+  }, []);
+
+  const changeViewMode = useCallback((mode: ViewMode) => {
+    setViewMode(mode);
+    window.electron.storeSet("viewMode", mode);
+  }, []);
 
   const handleLock = useCallback(async () => {
     if (lockingRef.current) return;
@@ -306,19 +344,29 @@ export function EditorPage({
           >
             <Settings className="h-4 w-4" />
           </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            onClick={() => setPreview(!preview)}
-            title={preview ? "Edit" : "Preview"}
+          <div
+            role="radiogroup"
+            aria-label="View mode"
+            className="mx-1 flex items-center rounded-md border p-0.5"
           >
-            {preview ? (
-              <Pencil className="h-4 w-4" />
-            ) : (
-              <Eye className="h-4 w-4" />
-            )}
-          </Button>
+            {VIEW_MODES.map(({ mode, label, Icon }) => (
+              <button
+                key={mode}
+                type="button"
+                role="radio"
+                aria-checked={viewMode === mode}
+                title={label}
+                onClick={() => changeViewMode(mode)}
+                className={`flex h-7 w-7 items-center justify-center rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${
+                  viewMode === mode
+                    ? "bg-accent text-accent-foreground"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <Icon className="h-4 w-4" />
+              </button>
+            ))}
+          </div>
           <Button
             variant="ghost"
             size="icon"
@@ -336,24 +384,24 @@ export function EditorPage({
         </div>
       </div>
 
-      {/* Editor / Preview. The editor stays mounted so cursor, scroll and
-          undo history survive toggling preview. */}
-      {preview && (
-        <div className="flex-1 overflow-auto">
-          <article className="prose prose-neutral mx-auto max-w-3xl p-8">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-              {content || "*Empty vault — switch to edit to start writing.*"}
-            </ReactMarkdown>
-          </article>
-        </div>
-      )}
-      <MarkdownEditor
-        ref={editorRef}
-        className={`min-h-0 flex-1 ${preview ? "hidden" : ""}`}
-        value={content}
-        onChange={handleChange}
-        placeholder="Start writing markdown..."
-      />
+      {/* The editor stays mounted in every mode so cursor, scroll and undo
+          history survive switching views. */}
+      <div className="flex min-h-0 flex-1">
+        <MarkdownEditor
+          ref={editorRef}
+          className={`min-h-0 min-w-0 flex-1 ${viewMode === "preview" ? "hidden" : ""}`}
+          value={content}
+          onChange={handleChange}
+          placeholder="Start writing markdown..."
+        />
+        {viewMode !== "edit" && (
+          <div
+            className={`min-w-0 flex-1 overflow-auto ${viewMode === "split" ? "border-l" : ""}`}
+          >
+            <Preview markdown={previewContent} />
+          </div>
+        )}
+      </div>
 
       {settingsOpen && (
         <SettingsDialog

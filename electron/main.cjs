@@ -6,6 +6,7 @@ const {
   shell,
   nativeImage,
   powerMonitor,
+  nativeTheme,
 } = require("electron");
 const path = require("path");
 const fs = require("fs");
@@ -162,6 +163,8 @@ function createWindow() {
     minHeight: 480,
     titleBarStyle: "hiddenInset",
     trafficLightPosition: { x: 16, y: 18 },
+    // Match the page background to avoid a white flash in dark mode.
+    backgroundColor: nativeTheme.shouldUseDarkColors ? "#0a0a0a" : "#ffffff",
     icon: path.join(__dirname, "../build/icon.png"),
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
@@ -275,7 +278,8 @@ handle("file:exists", async (_, filePath) => {
   return fs.existsSync(assertAllowed(filePath));
 });
 
-const STORE_KEYS = new Set(["lastFile", "autoLockMinutes"]);
+const STORE_KEYS = new Set(["lastFile", "autoLockMinutes", "viewMode"]);
+const VIEW_MODES = new Set(["edit", "split", "preview"]);
 const AUTO_LOCK_CHOICES = new Set([0, 1, 5, 15, 30, 60]);
 
 handle("store:get", async (_, key) => {
@@ -288,6 +292,9 @@ handle("store:set", async (_, key, value) => {
   if (key === "lastFile" && value !== null) assertAllowed(value);
   if (key === "autoLockMinutes" && !AUTO_LOCK_CHOICES.has(value)) {
     throw new Error("Invalid auto-lock value");
+  }
+  if (key === "viewMode" && !VIEW_MODES.has(value)) {
+    throw new Error("Invalid view mode");
   }
   const store = readStore();
   store[key] = value;

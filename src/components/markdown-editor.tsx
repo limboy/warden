@@ -47,7 +47,7 @@ const theme = EditorView.theme({
   "&": {
     height: "100%",
     fontSize: "14px",
-    color: "var(--color-foreground)",
+    color: "var(--foreground)",
     backgroundColor: "transparent",
   },
   "&.cm-focused": { outline: "none" },
@@ -61,11 +61,11 @@ const theme = EditorView.theme({
     maxWidth: "48rem",
     margin: "0 auto",
     padding: "0 32px",
-    caretColor: "var(--color-foreground)",
+    caretColor: "var(--foreground)",
   },
   ".cm-line": { padding: "0" },
   ".cm-cursor, .cm-dropCursor": {
-    borderLeftColor: "var(--color-foreground)",
+    borderLeftColor: "var(--foreground)",
   },
   "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection":
     { backgroundColor: "var(--cm-selection)" },
@@ -77,13 +77,13 @@ const theme = EditorView.theme({
   ".cm-searchMatch.cm-searchMatch-selected": {
     backgroundColor: "var(--cm-match-border)",
   },
-  ".cm-placeholder": { color: "var(--color-muted-foreground)" },
+  ".cm-placeholder": { color: "var(--muted-foreground)" },
   ".cm-panels": {
-    backgroundColor: "var(--color-background)",
-    color: "var(--color-foreground)",
+    backgroundColor: "var(--background)",
+    color: "var(--foreground)",
   },
   ".cm-panels.cm-panels-top": {
-    borderBottom: "1px solid var(--color-border)",
+    borderBottom: "1px solid var(--border)",
   },
   ".cm-panel.cm-search": {
     padding: "8px 12px",
@@ -91,7 +91,7 @@ const theme = EditorView.theme({
     fontSize: "12px",
   },
   ".cm-textfield": {
-    border: "1px solid var(--color-input)",
+    border: "1px solid var(--input)",
     borderRadius: "6px",
     padding: "3px 6px",
     backgroundColor: "transparent",
@@ -99,13 +99,13 @@ const theme = EditorView.theme({
   },
   ".cm-button": {
     backgroundImage: "none",
-    backgroundColor: "var(--color-secondary)",
-    color: "var(--color-secondary-foreground)",
-    border: "1px solid var(--color-border)",
+    backgroundColor: "var(--secondary)",
+    color: "var(--secondary-foreground)",
+    border: "1px solid var(--border)",
     borderRadius: "6px",
     padding: "3px 8px",
   },
-  ".cm-panel.cm-search [name=close]": { color: "var(--color-muted-foreground)" },
+  ".cm-panel.cm-search [name=close]": { color: "var(--muted-foreground)" },
 });
 
 const highlight = HighlightStyle.define([
@@ -117,10 +117,10 @@ const highlight = HighlightStyle.define([
   { tag: t.strikethrough, textDecoration: "line-through" },
   { tag: [t.link, t.url], color: "var(--cm-link)" },
   { tag: t.monospace, color: "var(--cm-code)" },
-  { tag: t.quote, color: "var(--color-muted-foreground)", fontStyle: "italic" },
+  { tag: t.quote, color: "var(--muted-foreground)", fontStyle: "italic" },
   {
     tag: [t.processingInstruction, t.contentSeparator, t.meta, t.labelName],
-    color: "var(--color-muted-foreground)",
+    color: "var(--muted-foreground)",
   },
   // Fenced code blocks
   { tag: [t.keyword, t.operatorKeyword, t.modifier], color: "var(--cm-keyword)" },

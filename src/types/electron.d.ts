@@ -11,6 +11,7 @@ declare global {
   interface StoreSchema {
     lastFile: string;
     autoLockMinutes: number;
+    viewMode: "edit" | "split" | "preview";
   }
 
   interface Window {
