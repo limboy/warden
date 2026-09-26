@@ -11,6 +11,7 @@
     "build:mac": "npm run build && electron-builder --mac --dir",
     "build:dmg": "npm run build && electron-builder --mac",
     "lint": "eslint .",
+    "test": "vitest run",
     "preview": "vite preview"
   },
   "build": {
@@ -24,7 +25,10 @@
       "output": "release"
     },
     "mac": {
-      "target": ["dmg", "dir"],
+      "target": [
+        "dmg",
+        "dir"
+      ],
       "icon": "build/icon.icns",
       "category": "public.app-category.productivity"
     },
@@ -74,6 +78,7 @@
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.58.2",
     "vite": "^8.0.10",
+    "vitest": "^5.0.2",
     "wait-on": "^9.0.5"
   }
 }

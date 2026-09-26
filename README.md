@@ -1,73 +1,83 @@
-# React + TypeScript + Vite
+# Warden
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+An encrypted markdown vault for the desktop. Each vault is a single `.warden`
+file you can keep anywhere (including a synced folder); its contents are only
+ever decrypted in memory.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- Markdown editor with live preview (GitHub-flavored markdown)
+- Autosave with atomic writes; pending edits are flushed on lock and quit
+- Auto-lock when idle (configurable), on screen lock and on sleep
+- Change password
+- Automatic encrypted backups with in-app restore
+- Open vaults from Finder/Explorer or by dropping them onto the window
 
-## React Compiler
+## Security model
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+| | |
+|---|---|
+| Cipher | AES-256-GCM, fresh 96-bit IV on every save |
+| Key derivation | PBKDF2-HMAC-SHA256, 600,000 iterations, 128-bit random salt |
+| Header integrity | Version, KDF name, iterations and salt are authenticated as AES-GCM additional data |
+| In memory | Only the derived, non-extractable `CryptoKey` is kept after unlocking; the password is discarded |
+| Renderer isolation | Context isolation + sandbox, strict CSP in production, external links open in the system browser |
+| File access | The renderer can only read/write files the user chose through a dialog, drag-and-drop or the OS |
 
-## Expanding the ESLint configuration
+There is no password recovery. If you forget the password, the vault cannot be
+decrypted.
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+### File format (v2)
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+A vault is a small JSON document:
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```json
+{
+  "v": 2,
+  "kdf": "PBKDF2-SHA256",
+  "iter": 600000,
+  "salt": "<base64>",
+  "iv": "<base64>",
+  "ct": "<base64 ciphertext + GCM tag>"
+}
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+The additional authenticated data is `JSON.stringify({ v, kdf, iter, salt })`.
+Version 1 files (100,000 iterations, no AAD) still open and are upgraded to v2
+on unlock.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+### Backups
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+Before a vault is overwritten, the previous (still encrypted) file is copied to
+`<userData>/backups/<hash of vault path>/` — at most once every 10 minutes, and
+always before a password change or restore. The 30 most recent snapshots are
+kept. `<userData>` is `~/Library/Application Support/warden` on macOS.
+
+## Development
+
+```bash
+npm install
+npm run dev:electron   # Vite dev server + Electron
+npm test               # unit tests (vitest)
+npm run lint
+npm run build          # typecheck + production renderer build
+```
+
+## Packaging
+
+```bash
+npm run build:mac   # unpacked .app in release/
+npm run build:dmg   # .dmg installer
+```
+
+Code signing uses whatever Developer ID certificate electron-builder finds in
+the keychain. For a local unsigned build, set `CSC_IDENTITY_AUTO_DISCOVERY=false`.
+
+## Project layout
+
+```
+electron/main.cjs      main process: windows, IPC, file access, backups, OS integration
+electron/preload.cjs   the narrow API exposed to the renderer as window.electron
+src/lib/crypto.ts      vault format, key derivation, encryption
+src/components/        landing (create/unlock), editor, settings dialog
 ```
