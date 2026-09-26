@@ -324,13 +324,12 @@ handle("recent:remove", async (_, filePath) => {
 // Opt-in per vault. The password is encrypted with safeStorage (key held in the
 // macOS Keychain) and only released to the renderer after a successful Touch ID
 // prompt. The "biometric" store entry is not reachable through store:get/set.
+// safeStorage is only touched when sealing/unsealing: on macOS even
+// isEncryptionAvailable() reads the Keychain, which can trigger a password
+// prompt on every launch for users who never turned Touch ID on.
 
 function biometricAvailable() {
-  return (
-    process.platform === "darwin" &&
-    systemPreferences.canPromptTouchID() &&
-    safeStorage.isEncryptionAvailable()
-  );
+  return process.platform === "darwin" && systemPreferences.canPromptTouchID();
 }
 
 function readBiometric() {
@@ -347,6 +346,9 @@ function writeBiometric(map) {
 function sealPassword(password) {
   if (typeof password !== "string" || !password) {
     throw new Error("Invalid password");
+  }
+  if (!safeStorage.isEncryptionAvailable()) {
+    throw new Error("Secure storage is not available");
   }
   return safeStorage.encryptString(password).toString("base64");
 }
