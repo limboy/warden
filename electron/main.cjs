@@ -278,7 +278,38 @@ handle("file:exists", async (_, filePath) => {
   return fs.existsSync(assertAllowed(filePath));
 });
 
-const STORE_KEYS = new Set(["lastFile", "autoLockMinutes", "viewMode"]);
+// --- Recent vaults ------------------------------------------------------------
+// Owned by the main process so the renderer can't plant arbitrary paths in
+// the allow-list for the next launch.
+
+const RECENT_MAX = 8;
+
+function readRecents() {
+  const { recentFiles } = readStore();
+  return Array.isArray(recentFiles) ? recentFiles.filter(isVaultPath) : [];
+}
+
+function writeRecents(list) {
+  const store = readStore();
+  store.recentFiles = list.slice(0, RECENT_MAX);
+  writeStore(store);
+}
+
+handle("recent:list", async () => {
+  return readRecents().map((p) => ({ path: p, exists: fs.existsSync(p) }));
+});
+
+handle("recent:add", async (_, filePath) => {
+  const p = assertAllowed(filePath);
+  writeRecents([p, ...readRecents().filter((r) => r !== p)]);
+});
+
+handle("recent:remove", async (_, filePath) => {
+  if (typeof filePath !== "string") return;
+  writeRecents(readRecents().filter((r) => r !== filePath));
+});
+
+const STORE_KEYS = new Set(["autoLockMinutes", "viewMode"]);
 const VIEW_MODES = new Set(["edit", "split", "preview"]);
 const AUTO_LOCK_CHOICES = new Set([0, 1, 5, 15, 30, 60]);
 
@@ -289,7 +320,6 @@ handle("store:get", async (_, key) => {
 
 handle("store:set", async (_, key, value) => {
   if (!STORE_KEYS.has(key)) throw new Error("Unknown store key");
-  if (key === "lastFile" && value !== null) assertAllowed(value);
   if (key === "autoLockMinutes" && !AUTO_LOCK_CHOICES.has(value)) {
     throw new Error("Invalid auto-lock value");
   }
@@ -343,8 +373,14 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.whenReady().then(() => {
-    const { lastFile } = readStore();
-    if (typeof lastFile === "string") allowPath(lastFile);
+    // Migrate the single "lastFile" entry from older versions.
+    const store = readStore();
+    if (typeof store.lastFile === "string") {
+      if (!Array.isArray(store.recentFiles)) store.recentFiles = [store.lastFile];
+      delete store.lastFile;
+      writeStore(store);
+    }
+    for (const p of readRecents()) allowPath(p);
 
     // Packaged builds get their dock icon from the .icns in the bundle.
     if (isDev && process.platform === "darwin") {

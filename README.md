@@ -6,7 +6,10 @@ ever decrypted in memory.
 
 ## Features
 
-- Markdown editor with live preview (GitHub-flavored markdown)
+- CodeMirror markdown editor: syntax highlighting, find/replace, list
+  continuation; editor-only, split, or preview-only views
+- Light and dark themes following the OS
+- Recent vaults list on the start screen
 - Autosave with atomic writes; pending edits are flushed on lock and quit
 - Auto-lock when idle (configurable), on screen lock and on sleep
 - Change password

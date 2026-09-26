@@ -71,6 +71,7 @@ function App() {
       onUnlock={(filePath, vaultKey, content) => {
         setOpenRequest(null);
         setSession({ filePath, vaultKey, content });
+        window.electron.addRecent(filePath);
       }}
     />
   );

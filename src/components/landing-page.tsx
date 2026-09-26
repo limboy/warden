@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Shield,
   FilePlus,
@@ -6,6 +6,7 @@ import {
   ArrowLeft,
   Loader2,
   AlertCircle,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,7 +26,7 @@ import {
   CorruptVaultError,
   type VaultKey,
 } from "@/lib/crypto";
-import { basename } from "@/lib/utils";
+import { basename, dirname } from "@/lib/utils";
 
 type Mode =
   | { type: "idle" }
@@ -77,15 +78,37 @@ export function LandingPage({ initialOpenPath, onUnlock }: Props) {
       ? { type: "open", filePath: initialOpenPath }
       : { type: "idle" }
   );
-  const [lastFile, setLastFile] = useState<string | null>(null);
+  const [recents, setRecents] = useState<RecentVault[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const passwordRef = useRef<HTMLInputElement>(null);
   const resumePasswordRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    window.electron.storeGet("lastFile").then(setLastFile);
+  const refreshRecents = useCallback(() => {
+    window.electron.listRecents().then(setRecents);
   }, []);
+
+  useEffect(refreshRecents, [refreshRecents]);
+
+  // Offer the most recent vault that still exists for one-step unlocking;
+  // list the rest below.
+  const lastFile = recents.find((r) => r.exists)?.path ?? null;
+  const otherRecents = recents.filter((r) => r.path !== lastFile);
+
+  function forgetRecent(path: string) {
+    window.electron.removeRecent(path).then(refreshRecents);
+  }
+
+  function handleUnlockError(err: unknown, filePath: string) {
+    setError(unlockErrorMessage(err, filePath));
+    if (err instanceof FileMissingError) forgetRecent(filePath);
+    setLoading(false);
+  }
+
+  function openRecent(filePath: string) {
+    setMode({ type: "open", filePath });
+    setError("");
+  }
 
   async function handleResume(e: React.FormEvent) {
     e.preventDefault();
@@ -99,12 +122,7 @@ export function LandingPage({ initialOpenPath, onUnlock }: Props) {
       const { content, vaultKey } = await openVault(lastFile, password);
       onUnlock(lastFile, vaultKey, content);
     } catch (err) {
-      setError(unlockErrorMessage(err, lastFile));
-      if (err instanceof FileMissingError) {
-        setLastFile(null);
-        window.electron.storeSet("lastFile", null);
-      }
-      setLoading(false);
+      handleUnlockError(err, lastFile);
     }
   }
 
@@ -142,7 +160,6 @@ export function LandingPage({ initialOpenPath, onUnlock }: Props) {
     try {
       const vaultKey = await createVaultKey(password);
       await window.electron.writeFile(mode.filePath, await seal("", vaultKey));
-      await window.electron.storeSet("lastFile", mode.filePath);
       onUnlock(mode.filePath, vaultKey, "");
     } catch {
       setError("Failed to create vault");
@@ -172,11 +189,9 @@ export function LandingPage({ initialOpenPath, onUnlock }: Props) {
     setError("");
     try {
       const { content, vaultKey } = await openVault(mode.filePath, password);
-      await window.electron.storeSet("lastFile", mode.filePath);
       onUnlock(mode.filePath, vaultKey, content);
     } catch (err) {
-      setError(unlockErrorMessage(err, mode.filePath));
-      setLoading(false);
+      handleUnlockError(err, mode.filePath);
     }
   }
 
@@ -242,6 +257,43 @@ export function LandingPage({ initialOpenPath, onUnlock }: Props) {
                   </form>
                 </CardContent>
               </Card>
+            )}
+
+            {otherRecents.length > 0 && (
+              <div className="space-y-1.5">
+                <p className="px-1 text-xs font-medium text-muted-foreground">
+                  Recent
+                </p>
+                <ul className="divide-y rounded-xl border">
+                  {otherRecents.map((r) => (
+                    <li key={r.path} className="group flex items-center">
+                      <button
+                        type="button"
+                        disabled={!r.exists}
+                        onClick={() => openRecent(r.path)}
+                        title={r.exists ? r.path : `${r.path} (not found)`}
+                        className="min-w-0 flex-1 px-3 py-2 text-left transition-colors hover:bg-accent/50 focus-visible:bg-accent/50 focus-visible:outline-none disabled:cursor-default disabled:opacity-50 disabled:hover:bg-transparent"
+                      >
+                        <span className="block truncate text-sm">
+                          {basename(r.path)}
+                        </span>
+                        <span className="block truncate text-xs text-muted-foreground">
+                          {r.exists ? dirname(r.path) : "File not found"}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => forgetRecent(r.path)}
+                        title="Remove from list"
+                        aria-label={`Remove ${basename(r.path)} from recent list`}
+                        className="mr-2 rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
 
             <div className="grid grid-cols-2 gap-3">

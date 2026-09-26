@@ -8,8 +8,12 @@ declare global {
     size: number;
   }
 
+  interface RecentVault {
+    path: string;
+    exists: boolean;
+  }
+
   interface StoreSchema {
-    lastFile: string;
     autoLockMinutes: number;
     viewMode: "edit" | "split" | "preview";
   }
@@ -30,6 +34,10 @@ declare global {
       allowDroppedFile: (file: File) => Promise<string | null>;
       listBackups: (path: string) => Promise<BackupInfo[]>;
       readBackup: (path: string, id: string) => Promise<string>;
+      listRecents: () => Promise<RecentVault[]>;
+      /** Move a vault to the top of the recent list. */
+      addRecent: (path: string) => Promise<void>;
+      removeRecent: (path: string) => Promise<void>;
       storeGet: <K extends keyof StoreSchema>(
         key: K
       ) => Promise<StoreSchema[K] | null>;
