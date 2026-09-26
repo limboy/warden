@@ -11,6 +11,8 @@ declare global {
       fileExists: (path: string) => Promise<boolean>;
       storeGet: (key: string) => Promise<string | null>;
       storeSet: (key: string, value: string | null) => Promise<void>;
+      /** Called (and awaited) before the window closes; pass null to clear. */
+      setBeforeCloseHandler: (fn: (() => Promise<void>) | null) => void;
     };
   }
 }

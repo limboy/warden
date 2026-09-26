@@ -17,7 +17,15 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { encrypt, decrypt } from "@/lib/crypto";
+import {
+  createVaultKey,
+  seal,
+  unlock,
+  WrongPasswordError,
+  CorruptVaultError,
+  type VaultKey,
+} from "@/lib/crypto";
+import { basename } from "@/lib/utils";
 
 type Mode =
   | { type: "idle" }
@@ -25,8 +33,41 @@ type Mode =
   | { type: "open"; filePath: string };
 
 interface Props {
-  onUnlock: (filePath: string, password: string, content: string) => void;
+  onUnlock: (filePath: string, vaultKey: VaultKey, content: string) => void;
 }
+
+class FileMissingError extends Error {}
+
+/** Read and decrypt a vault, upgrading legacy KDF parameters if needed. */
+async function openVault(filePath: string, password: string) {
+  if (!(await window.electron.fileExists(filePath))) {
+    throw new FileMissingError();
+  }
+  const raw = await window.electron.readFile(filePath);
+  const { content, vaultKey, outdated } = await unlock(raw, password);
+  if (!outdated) return { content, vaultKey };
+
+  const upgraded = await createVaultKey(password);
+  try {
+    await window.electron.writeFile(filePath, await seal(content, upgraded));
+    return { content, vaultKey: upgraded };
+  } catch {
+    // Keep working with the old parameters; the upgrade is retried next time.
+    return { content, vaultKey };
+  }
+}
+
+function unlockErrorMessage(err: unknown, filePath: string) {
+  if (err instanceof FileMissingError) {
+    return `${basename(filePath)} no longer exists — it may have been moved or deleted`;
+  }
+  if (err instanceof WrongPasswordError) return "Wrong password";
+  if (err instanceof CorruptVaultError) return err.message;
+  return "Failed to open vault";
+}
+
+const actionCardClass =
+  "flex flex-col items-center gap-2 rounded-xl border bg-card p-5 text-card-foreground shadow-sm transition-colors hover:border-foreground/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 export function LandingPage({ onUnlock }: Props) {
   const [mode, setMode] = useState<Mode>({ type: "idle" });
@@ -40,10 +81,6 @@ export function LandingPage({ onUnlock }: Props) {
     window.electron.storeGet("lastFile").then(setLastFile);
   }, []);
 
-  function fileName(path: string) {
-    return path.split("/").pop() || path;
-  }
-
   async function handleResume(e: React.FormEvent) {
     e.preventDefault();
     if (!lastFile || !resumePasswordRef.current) return;
@@ -53,11 +90,14 @@ export function LandingPage({ onUnlock }: Props) {
     setLoading(true);
     setError("");
     try {
-      const raw = await window.electron.readFile(lastFile);
-      const content = await decrypt(raw, password);
-      onUnlock(lastFile, password, content);
-    } catch {
-      setError("Wrong password or corrupted file");
+      const { content, vaultKey } = await openVault(lastFile, password);
+      onUnlock(lastFile, vaultKey, content);
+    } catch (err) {
+      setError(unlockErrorMessage(err, lastFile));
+      if (err instanceof FileMissingError) {
+        setLastFile(null);
+        window.electron.storeSet("lastFile", null);
+      }
       setLoading(false);
     }
   }
@@ -65,6 +105,12 @@ export function LandingPage({ onUnlock }: Props) {
   async function handleNewVault() {
     const filePath = await window.electron.showSaveDialog("vault.warden");
     if (!filePath) return;
+    if (await window.electron.fileExists(filePath)) {
+      setError(
+        `${basename(filePath)} already exists. Choose a new name, or use Open Vault.`
+      );
+      return;
+    }
     setMode({ type: "create", filePath });
     setError("");
     setTimeout(() => passwordRef.current?.focus(), 50);
@@ -88,10 +134,10 @@ export function LandingPage({ onUnlock }: Props) {
     setLoading(true);
     setError("");
     try {
-      const encrypted = await encrypt("", password);
-      await window.electron.writeFile(mode.filePath, encrypted);
+      const vaultKey = await createVaultKey(password);
+      await window.electron.writeFile(mode.filePath, await seal("", vaultKey));
       await window.electron.storeSet("lastFile", mode.filePath);
-      onUnlock(mode.filePath, password, "");
+      onUnlock(mode.filePath, vaultKey, "");
     } catch {
       setError("Failed to create vault");
       setLoading(false);
@@ -119,12 +165,11 @@ export function LandingPage({ onUnlock }: Props) {
     setLoading(true);
     setError("");
     try {
-      const raw = await window.electron.readFile(mode.filePath);
-      const content = await decrypt(raw, password);
+      const { content, vaultKey } = await openVault(mode.filePath, password);
       await window.electron.storeSet("lastFile", mode.filePath);
-      onUnlock(mode.filePath, password, content);
-    } catch {
-      setError("Wrong password or corrupted file");
+      onUnlock(mode.filePath, vaultKey, content);
+    } catch (err) {
+      setError(unlockErrorMessage(err, mode.filePath));
       setLoading(false);
     }
   }
@@ -169,7 +214,7 @@ export function LandingPage({ onUnlock }: Props) {
                     Continue
                   </CardTitle>
                   <CardDescription className="truncate font-mono text-xs">
-                    {fileName(lastFile)}
+                    {basename(lastFile)}
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -194,24 +239,22 @@ export function LandingPage({ onUnlock }: Props) {
             )}
 
             <div className="grid grid-cols-2 gap-3">
-              <Card
-                className="cursor-pointer transition-colors hover:border-foreground/20"
+              <button
+                type="button"
+                className={actionCardClass}
                 onClick={handleNewVault}
               >
-                <CardContent className="flex flex-col items-center gap-2 p-5">
-                  <FilePlus className="h-6 w-6 text-muted-foreground" />
-                  <span className="text-sm font-medium">New Vault</span>
-                </CardContent>
-              </Card>
-              <Card
-                className="cursor-pointer transition-colors hover:border-foreground/20"
+                <FilePlus className="h-6 w-6 text-muted-foreground" />
+                <span className="text-sm font-medium">New Vault</span>
+              </button>
+              <button
+                type="button"
+                className={actionCardClass}
                 onClick={handleOpenVault}
               >
-                <CardContent className="flex flex-col items-center gap-2 p-5">
-                  <FolderOpen className="h-6 w-6 text-muted-foreground" />
-                  <span className="text-sm font-medium">Open Vault</span>
-                </CardContent>
-              </Card>
+                <FolderOpen className="h-6 w-6 text-muted-foreground" />
+                <span className="text-sm font-medium">Open Vault</span>
+              </button>
             </div>
           </>
         )}
@@ -234,7 +277,7 @@ export function LandingPage({ onUnlock }: Props) {
                     Create Vault
                   </CardTitle>
                   <CardDescription className="truncate font-mono text-xs">
-                    {fileName(mode.filePath)}
+                    {basename(mode.filePath)}
                   </CardDescription>
                 </div>
               </div>
@@ -292,7 +335,7 @@ export function LandingPage({ onUnlock }: Props) {
                     Unlock Vault
                   </CardTitle>
                   <CardDescription className="truncate font-mono text-xs">
-                    {fileName(mode.filePath)}
+                    {basename(mode.filePath)}
                   </CardDescription>
                 </div>
               </div>

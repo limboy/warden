@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { LandingPage } from "@/components/landing-page";
 import { EditorPage } from "@/components/editor-page";
+import type { VaultKey } from "@/lib/crypto";
 
 interface Session {
   filePath: string;
-  password: string;
+  vaultKey: VaultKey;
   content: string;
 }
 
@@ -16,7 +17,7 @@ function App() {
       <EditorPage
         key={session.filePath}
         filePath={session.filePath}
-        password={session.password}
+        vaultKey={session.vaultKey}
         initialContent={session.content}
         onLock={() => setSession(null)}
       />
@@ -25,8 +26,8 @@ function App() {
 
   return (
     <LandingPage
-      onUnlock={(filePath, password, content) =>
-        setSession({ filePath, password, content })
+      onUnlock={(filePath, vaultKey, content) =>
+        setSession({ filePath, vaultKey, content })
       }
     />
   );
