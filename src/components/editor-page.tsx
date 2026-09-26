@@ -12,6 +12,10 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
+  MarkdownEditor,
+  type MarkdownEditorHandle,
+} from "@/components/markdown-editor";
+import {
   SettingsDialog,
   type RestoreResult,
 } from "@/components/settings-dialog";
@@ -53,7 +57,7 @@ export function EditorPage({
   const [autoLockMinutes, setAutoLockMinutes] = useState(
     DEFAULT_AUTO_LOCK_MINUTES
   );
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const editorRef = useRef<MarkdownEditorHandle>(null);
   const lockingRef = useRef(false);
   const lastActivity = useRef(0);
 
@@ -110,8 +114,7 @@ export function EditorPage({
   const flush = useCallback(() => persist(), [persist]);
 
   const handleChange = useCallback(
-    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-      const newContent = e.target.value;
+    (newContent: string) => {
       setContent(newContent);
       contentRef.current = newContent;
       editVersion.current++;
@@ -140,7 +143,7 @@ export function EditorPage({
   }, [fileName]);
 
   useEffect(() => {
-    if (!preview) textareaRef.current?.focus();
+    if (!preview) editorRef.current?.focus();
   }, [preview]);
 
   const handleLock = useCallback(async () => {
@@ -255,17 +258,6 @@ export function EditorPage({
     [flush]
   );
 
-  const handleTextareaKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-      if (e.key === "Tab" && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
-        e.preventDefault();
-        // execCommand keeps the native undo stack intact.
-        document.execCommand("insertText", false, "  ");
-      }
-    },
-    []
-  );
-
   return (
     <div className="flex h-screen flex-col" onKeyDown={handleKeyDown}>
       {/* Title bar drag region + toolbar */}
@@ -344,7 +336,7 @@ export function EditorPage({
         </div>
       </div>
 
-      {/* Editor / Preview. The textarea stays mounted so cursor, scroll and
+      {/* Editor / Preview. The editor stays mounted so cursor, scroll and
           undo history survive toggling preview. */}
       {preview && (
         <div className="flex-1 overflow-auto">
@@ -355,14 +347,12 @@ export function EditorPage({
           </article>
         </div>
       )}
-      <textarea
-        ref={textareaRef}
-        className={`flex-1 resize-none bg-transparent p-8 font-mono text-sm leading-relaxed outline-none placeholder:text-muted-foreground ${preview ? "hidden" : ""}`}
+      <MarkdownEditor
+        ref={editorRef}
+        className={`min-h-0 flex-1 ${preview ? "hidden" : ""}`}
         value={content}
         onChange={handleChange}
-        onKeyDown={handleTextareaKeyDown}
         placeholder="Start writing markdown..."
-        spellCheck={false}
       />
 
       {settingsOpen && (

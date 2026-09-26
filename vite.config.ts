@@ -34,6 +34,8 @@ function contentSecurityPolicy(): Plugin {
 export default defineConfig({
   plugins: [react(), tailwindcss(), contentSecurityPolicy()],
   base: "./",
+  // Loaded from disk in Electron, so bundle size warnings don't apply.
+  build: { chunkSizeWarningLimit: 2000 },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

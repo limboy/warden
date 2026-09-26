@@ -27,6 +27,21 @@
   --radius-xl: 0.75rem;
 }
 
+/* Editor (CodeMirror) colors */
+:root {
+  --cm-selection: oklch(0.9 0.04 250);
+  --cm-match: oklch(0.95 0.08 95);
+  --cm-match-border: oklch(0.85 0.12 95);
+  --cm-link: oklch(0.5 0.15 250);
+  --cm-code: oklch(0.5 0.15 20);
+  --cm-keyword: oklch(0.5 0.18 300);
+  --cm-string: oklch(0.5 0.13 150);
+  --cm-number: oklch(0.55 0.15 50);
+  --cm-comment: oklch(0.6 0 0);
+  --cm-function: oklch(0.5 0.15 250);
+  --cm-type: oklch(0.5 0.12 200);
+}
+
 @layer base {
   *,
   ::after,
