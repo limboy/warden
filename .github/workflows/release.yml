@@ -1,0 +1,95 @@
+# Builds macOS DMGs (Apple Silicon + Intel) and publishes them as a GitHub
+# Release whenever a version tag is pushed:
+#
+#   npm version 0.1.0 && git push --follow-tags
+#
+# Signing and notarization are optional. If the secrets below are set, the app
+# is signed with the Developer ID certificate and notarized; otherwise it gets
+# an ad-hoc signature and users have to approve it once in System Settings.
+#
+#   CSC_LINK                     base64 of the Developer ID Application .p12
+#   CSC_KEY_PASSWORD             password of the .p12
+#   APPLE_ID                     Apple ID email used for notarization
+#   APPLE_APP_SPECIFIC_PASSWORD  app-specific password for that Apple ID
+#   APPLE_TEAM_ID                Developer team ID
+
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Check tag matches package.json version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if [[ "${GITHUB_REF_NAME}" != "v${version}" ]]; then
+            echo "Tag ${GITHUB_REF_NAME} does not match package.json version ${version}" >&2
+            exit 1
+          fi
+
+      - run: npm test
+
+      - name: Build DMGs
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          # Unset empty secrets so electron-builder falls back to ad-hoc signing
+          # and skips notarization instead of failing on blank values.
+          for name in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+            [[ -z "${!name}" ]] && unset "$name"
+          done
+          npm run build
+          npx electron-builder --mac dmg --arm64 --x64 --publish never
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: warden-mac
+          path: release/*.dmg
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SIGNED: ${{ secrets.CSC_LINK != '' }}
+        run: |
+          notes="$(mktemp)"
+          cat > "$notes" <<'NOTES'
+          ## Install
+
+          1. Download the DMG for your Mac: **arm64** for Apple Silicon (M1 and later), **x64** for Intel.
+          2. Open it and drag **Warden** into **Applications**.
+          NOTES
+          if [[ "$SIGNED" != "true" ]]; then
+            cat >> "$notes" <<'NOTES'
+          3. This build is not notarized by Apple, so macOS blocks the first launch.
+             Open Warden once, then go to **System Settings → Privacy & Security** and click **Open Anyway**.
+             Or run: `xattr -dr com.apple.quarantine /Applications/Warden.app`
+          NOTES
+          fi
+          gh release create "$GITHUB_REF_NAME" release/*.dmg \
+            --title "Warden ${GITHUB_REF_NAME}" \
+            --notes-file "$notes" \
+            --generate-notes

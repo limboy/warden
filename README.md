@@ -4,6 +4,14 @@ An encrypted markdown vault for the desktop. Each vault is a single `.warden`
 file you can keep anywhere (including a synced folder); its contents are only
 ever decrypted in memory.
 
+## Install
+
+Download the DMG for your Mac from the
+[latest release](https://github.com/limboy/warden/releases/latest) (`arm64`
+for Apple Silicon, `x64` for Intel), open it and drag Warden into
+Applications. If macOS says it can't verify the app, open System Settings →
+Privacy & Security and click **Open Anyway**.
+
 ## Features
 
 - CodeMirror markdown editor: syntax highlighting, find/replace, list
@@ -92,6 +100,23 @@ npm run install:mac -- --skip-build --open
 
 Code signing uses whatever Developer ID certificate electron-builder finds in
 the keychain. For a local unsigned build, set `CSC_IDENTITY_AUTO_DISCOVERY=false`.
+
+### Releases
+
+Pushing a `v*` tag runs `.github/workflows/release.yml`, which builds DMGs for
+Apple Silicon (`arm64`) and Intel (`x64`) and attaches them to a GitHub Release.
+The tag must match the `version` in `package.json`:
+
+```bash
+npm version 0.1.0        # bumps package.json, commits and tags v0.1.0
+git push --follow-tags
+```
+
+To sign and notarize, add these repository secrets: `CSC_LINK` (base64 of a
+Developer ID Application `.p12`), `CSC_KEY_PASSWORD`, `APPLE_ID`,
+`APPLE_APP_SPECIFIC_PASSWORD` and `APPLE_TEAM_ID`. Without them the app gets an
+ad-hoc signature, and users must allow the first launch in System Settings →
+Privacy & Security → Open Anyway (the release notes explain this).
 
 ## Project layout
 

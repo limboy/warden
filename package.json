@@ -33,6 +33,9 @@
       "icon": "build/icon.icns",
       "category": "public.app-category.productivity"
     },
+    "dmg": {
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    },
     "win": {
       "target": "nsis"
     },
